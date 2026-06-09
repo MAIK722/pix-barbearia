@@ -62,13 +62,14 @@ app.post("/criar-pix", async (req, res) => {
           "Content-Type": "application/json",
           "access_token": process.env.ASAAS_TOKEN
         },
-        body: JSON.stringify({
-          billingType: "PIX",
-          value: Number(valor),
-          customer: clienteData.id,
-          description: `Agendamento Barbearia Prime - ${nome}`,
-          externalReference: telefone
-        })
+body: JSON.stringify({
+  billingType: "PIX",
+  value: Number(valor),
+  customer: clienteData.id,
+  dueDate: new Date().toISOString().split("T")[0],
+  description: `Agendamento Barbearia Prime - ${nome}`,
+  externalReference: telefone
+})
       }
     );
 
