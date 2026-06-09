@@ -85,11 +85,33 @@ app.post("/criar-pix", async (req, res) => {
       });
     }
 
+    const pixResponse = await fetch(
+      `https://www.asaas.com/api/v3/payments/${pagamentoData.id}/pixQrCode`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "access_token": process.env.ASAAS_TOKEN
+        }
+      }
+    );
+
+    const pixData = await pixResponse.json();
+
+    console.log("PIX DATA:", pixData);
+
+    if (!pixResponse.ok) {
+      return res.status(400).json({
+        erro: "Erro ao buscar QR Code PIX",
+        detalhes: pixData
+      });
+    }
+
     return res.status(200).json({
       customerId: clienteData.id,
       paymentId: pagamentoData.id,
-      copiaECola: pagamentoData.pixTransaction?.payload || null,
-      qrCode: pagamentoData.pixTransaction?.qrCode || null
+      copiaECola: pixData.payload || null,
+      qrCode: pixData.encodedImage || null
     });
 
   } catch (erro) {
