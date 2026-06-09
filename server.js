@@ -1,4 +1,3 @@
-
 const express = require("express");
 const cors = require("cors");
 
@@ -16,11 +15,11 @@ app.get("/", (req, res) => {
 
 app.post("/criar-pix", async (req, res) => {
   try {
-    const { nome, telefone, valor } = req.body || {};
+    const { nome, telefone, cpf, valor } = req.body || {};
 
-    if (!nome || !telefone || !valor) {
+    if (!nome || !telefone || !cpf || !valor) {
       return res.status(400).json({
-        erro: "Nome, telefone e valor são obrigatórios"
+        erro: "Nome, telefone, CPF e valor são obrigatórios"
       });
     }
 
@@ -29,6 +28,9 @@ app.post("/criar-pix", async (req, res) => {
         erro: "ASAAS_TOKEN não configurado no Render"
       });
     }
+
+    const cpfLimpo = String(cpf).replace(/\D/g, "");
+    const telefoneLimpo = String(telefone).replace(/\D/g, "");
 
     const clienteResponse = await fetch(
       "https://www.asaas.com/api/v3/customers",
@@ -40,7 +42,8 @@ app.post("/criar-pix", async (req, res) => {
         },
         body: JSON.stringify({
           name: nome,
-          mobilePhone: telefone
+          mobilePhone: telefoneLimpo,
+          cpfCnpj: cpfLimpo
         })
       }
     );
@@ -62,14 +65,14 @@ app.post("/criar-pix", async (req, res) => {
           "Content-Type": "application/json",
           "access_token": process.env.ASAAS_TOKEN
         },
-body: JSON.stringify({
-  billingType: "PIX",
-  value: Number(valor),
-  customer: clienteData.id,
-  dueDate: new Date().toISOString().split("T")[0],
-  description: `Agendamento Barbearia Prime - ${nome}`,
-  externalReference: telefone
-})
+        body: JSON.stringify({
+          billingType: "PIX",
+          value: Number(valor),
+          customer: clienteData.id,
+          dueDate: new Date().toISOString().split("T")[0],
+          description: `Agendamento Barbearia Prime - ${nome}`,
+          externalReference: telefoneLimpo
+        })
       }
     );
 
