@@ -97,6 +97,13 @@ app.post("/criar-pix", async (req, res) => {
 
     const pixData = await pixResponse.json();
 
+    if (!pixResponse.ok) {
+      return res.status(400).json({
+        erro: "Erro ao buscar QR Code PIX",
+        detalhes: pixData
+      });
+    }
+
     return res.status(200).json({
       customerId: clienteData.id,
       paymentId: pagamentoData.id,
@@ -105,6 +112,8 @@ app.post("/criar-pix", async (req, res) => {
     });
 
   } catch (erro) {
+    console.log("Erro criar PIX:", erro);
+
     return res.status(500).json({
       erro: erro.message
     });
@@ -113,9 +122,19 @@ app.post("/criar-pix", async (req, res) => {
 
 app.post("/webhook-asaas", async (req, res) => {
   try {
+    console.log("================================");
+    console.log("WEBHOOK RECEBIDO");
+    console.log("BODY:", JSON.stringify(req.body, null, 2));
+    console.log("================================");
+
     const payment = req.body.payment;
 
+    console.log("PAYMENT:", payment);
+    console.log("PAYMENT ID:", payment?.id);
+    console.log("PAYMENT STATUS:", payment?.status);
+
     if (!payment || !payment.id) {
+      console.log("Pagamento não encontrado no webhook");
       return res.status(200).json({ ok: true });
     }
 
@@ -123,16 +142,22 @@ app.post("/webhook-asaas", async (req, res) => {
       payment.status === "RECEIVED" ||
       payment.status === "CONFIRMED"
     ) {
+      console.log("PIX CONFIRMADO");
+
       const snapshot = await db
         .collection("agendamentos")
         .where("paymentId", "==", payment.id)
         .get();
 
+      console.log("AGENDAMENTOS ENCONTRADOS:", snapshot.size);
+
       if (!snapshot.empty) {
         const batch = db.batch();
 
-        snapshot.forEach((doc) => {
-          batch.update(doc.ref, {
+        snapshot.forEach((docItem) => {
+          console.log("ATUALIZANDO:", docItem.id);
+
+          batch.update(docItem.ref, {
             status: "confirmado",
             pagamento: "Pago",
             confirmadoEm: admin.firestore.FieldValue.serverTimestamp()
@@ -140,13 +165,17 @@ app.post("/webhook-asaas", async (req, res) => {
         });
 
         await batch.commit();
+
+        console.log("AGENDAMENTO CONFIRMADO COM SUCESSO");
+      } else {
+        console.log("NENHUM AGENDAMENTO ENCONTRADO PARA:", payment.id);
       }
     }
 
     return res.status(200).json({ ok: true });
 
   } catch (erro) {
-    console.log("Erro webhook:", erro);
+    console.log("ERRO WEBHOOK:", erro);
 
     return res.status(500).json({
       erro: erro.message
