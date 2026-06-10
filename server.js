@@ -26,11 +26,19 @@ app.get("/", (req, res) => {
 
 app.post("/criar-pix", async (req, res) => {
   try {
-    const { nome, telefone, cpf, valor } = req.body || {};
+    const {
+      nome,
+      telefone,
+      cpf,
+      servico,
+      data,
+      hora,
+      valor
+    } = req.body || {};
 
-    if (!nome || !telefone || !cpf || !valor) {
+    if (!nome || !telefone || !cpf || !servico || !data || !hora || !valor) {
       return res.status(400).json({
-        erro: "Nome, telefone, CPF e valor são obrigatórios"
+        erro: "Todos os campos são obrigatórios"
       });
     }
 
@@ -104,6 +112,21 @@ app.post("/criar-pix", async (req, res) => {
       });
     }
 
+    await db.collection("pix_pendentes").doc(pagamentoData.id).set({
+      nome,
+      telefone: telefoneLimpo,
+      cpf: cpfLimpo,
+      servico,
+      valor: Number(valor),
+      data,
+      hora,
+      status: "aguardando_pagamento",
+      pagamento: "Pix",
+      paymentId: pagamentoData.id,
+      customerId: clienteData.id,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+
     return res.status(200).json({
       customerId: clienteData.id,
       paymentId: pagamentoData.id,
@@ -122,19 +145,11 @@ app.post("/criar-pix", async (req, res) => {
 
 app.post("/webhook-asaas", async (req, res) => {
   try {
-    console.log("================================");
-    console.log("WEBHOOK RECEBIDO");
-    console.log("BODY:", JSON.stringify(req.body, null, 2));
-    console.log("================================");
+    console.log("WEBHOOK RECEBIDO:", JSON.stringify(req.body, null, 2));
 
     const payment = req.body.payment;
 
-    console.log("PAYMENT:", payment);
-    console.log("PAYMENT ID:", payment?.id);
-    console.log("PAYMENT STATUS:", payment?.status);
-
     if (!payment || !payment.id) {
-      console.log("Pagamento não encontrado no webhook");
       return res.status(200).json({ ok: true });
     }
 
@@ -142,34 +157,41 @@ app.post("/webhook-asaas", async (req, res) => {
       payment.status === "RECEIVED" ||
       payment.status === "CONFIRMED"
     ) {
-      console.log("PIX CONFIRMADO");
+      const pendenteRef = db
+        .collection("pix_pendentes")
+        .doc(payment.id);
 
-      const snapshot = await db
-        .collection("agendamentos")
-        .where("paymentId", "==", payment.id)
-        .get();
+      const pendenteDoc = await pendenteRef.get();
 
-      console.log("AGENDAMENTOS ENCONTRADOS:", snapshot.size);
-
-      if (!snapshot.empty) {
-        const batch = db.batch();
-
-        snapshot.forEach((docItem) => {
-          console.log("ATUALIZANDO:", docItem.id);
-
-          batch.update(docItem.ref, {
-            status: "confirmado",
-            pagamento: "Pago",
-            confirmadoEm: admin.firestore.FieldValue.serverTimestamp()
-          });
-        });
-
-        await batch.commit();
-
-        console.log("AGENDAMENTO CONFIRMADO COM SUCESSO");
-      } else {
-        console.log("NENHUM AGENDAMENTO ENCONTRADO PARA:", payment.id);
+      if (!pendenteDoc.exists) {
+        console.log("PIX pendente não encontrado:", payment.id);
+        return res.status(200).json({ ok: true });
       }
+
+      const dados = pendenteDoc.data();
+
+      await db.collection("agendamentos").add({
+        nome: dados.nome,
+        telefone: dados.telefone,
+        cpf: dados.cpf,
+        servico: dados.servico,
+        valor: dados.valor,
+        data: dados.data,
+        hora: dados.hora,
+        status: "confirmado",
+        pagamento: "Pago",
+        paymentId: payment.id,
+        customerId: dados.customerId || "",
+        criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+        confirmadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      await pendenteRef.update({
+        status: "pago",
+        confirmadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      console.log("AGENDAMENTO CRIADO APÓS PAGAMENTO:", payment.id);
     }
 
     return res.status(200).json({ ok: true });
